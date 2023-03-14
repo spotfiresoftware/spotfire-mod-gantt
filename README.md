@@ -2,7 +2,9 @@
 
 <img src="assets/gantt.png" width="60%"/>
 
-Display a selectable list of unique values in a column or a hierarchy.
+A type of bar chart to visualize various categories into time series. Gantt charts illustrate the start and finish time in time period blocks.
+
+Gantt charts are often used in project management as one of the most popular and useful ways of showing activities displayed against time. On the left of the chart is a list of the activities and along the top is a suitable time scale. Each activity is represented by a bar; the position and length of the bar reflect the start date, duration, and end date of the activity.
 
 ## Installation & Use
 
