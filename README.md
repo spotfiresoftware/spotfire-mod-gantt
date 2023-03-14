@@ -8,6 +8,8 @@ Gantt charts are often used in project management as one of the most popular and
 
 ## Installation & Use
 
+[Download latest version](https://github.com/TIBCOSoftware/spotfire-mod-gantt/releases)
+
 The [Wiki](https://github.com/TIBCOSoftware/spotfire-mod-gantt/wiki) contains step-by-step instruction on how to install and use this Mod in TIBCO Spotfire®.
 
 ## Building the Project
