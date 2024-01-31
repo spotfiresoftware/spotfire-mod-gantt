@@ -27,6 +27,6 @@ The development version of bundle.js is uncompressed and not suitable for end-us
 - `npm run build`
 
 ## About Mods for Spotfire®
--   [TIBCO Community Exchange](https://community.tibco.com/s/global-search/%40uri#q=mod%20for%20tibco%20spotfire&t=Exchange&sort=date%20descending): A safe and trusted place to discover ready-to-use mods
--   [Developer documentation](https://spotfiresoftware.github.io/spotfire-mods/docs/): Introduction and tutorials for mods developers
--   [Mods examples](https://github.com/TIBCOSoftware/spotfire-mods/): A public repository for examples projects
+-   [Spotfire Community Exchange](https://community.spotfire.com/files/): A safe and trusted place to discover ready-to-use Mods
+-   [Developer documentation](https://spotfiresoftware.github.io/spotfire-mods/docs/): Introduction and tutorials for Mods developers
+-   [Mods examples](https://github.com/TIBCOSoftware/spotfire-mods/): A public repository for examples projectsr
