@@ -4,7 +4,7 @@ import { renderBars, updateBars } from "./bars";
 import { renderZoomSlider } from "./zoom-slider";
 import { renderVerticalScroll, updateVerticalScroll } from "./vertical-scroll";
 import { renderTodayLine, updateTodayLine } from "./today";
-import { StylingInfo, Tooltip } from "spotfire/spotfire-api-1-2";
+import { StylingInfo, Tooltip, Mod } from "spotfire/spotfire-api-1-2";
 import { dateDiffInDays } from "../utils";
 import { config } from "../global-settings";
 import * as d3 from "d3";
@@ -13,20 +13,22 @@ import { renderHeader, updateHeader } from "./header";
 import { renderDefs, updateDefs } from "./svg-defs";
 import { RenderInfo, RenderState } from "../interfaces";
 
-export function renderGantt(
+export async function renderGantt(
     parent: D3_SELECTION_SVGG,
     data: GanttData[],
     state: RenderState,
     tooltip: Tooltip,
     styling: StylingInfo,
-    interactive: boolean
+    interactive: boolean,
+    mod: Mod
 ) {
     const renderInfo: RenderInfo = {
         data: data,
         state: state,
         tooltip: tooltip,
         styling: styling,
-        interactive: interactive
+        interactive: interactive,
+        mod: mod
     };
 
     calculateUnitWidth(state);
@@ -38,18 +40,28 @@ export function renderGantt(
 
     renderHeader(parent, renderInfo);
     renderDefs(parent, renderInfo);
-    renderBars(parent, renderInfo);
-    renderLabels(parent, renderInfo);
+    const ganttContainer = parent.append("g").attr("id", "GanttContainer");
+    const clipPath = ganttContainer
+        .append("clipPath")
+        .attr("id", "ChartClip")
+        .append("rect")
+        .attr("x", config.labelsWidth)
+        .attr("y", 0)
+        .attr("width", config.chartWidth)
+        .attr("height", config.svgHeight);
+
+    await renderBars(ganttContainer, renderInfo);
+    renderLabels(ganttContainer, renderInfo);
     renderVerticalScroll(parent, renderInfo);
     renderTodayLine(parent, renderInfo);
 }
 
-export function updateGantt(parent: D3_SELECTION, renderInfo: RenderInfo) {
+export async function updateGantt(parent: D3_SELECTION, renderInfo: RenderInfo) {
     calculateUnitWidth(renderInfo.state);
 
     updateHeader(renderInfo);
     updateDefs(renderInfo);
-    updateBars(renderInfo);
+    await updateBars(renderInfo);
     updateLabels(renderInfo);
     updateVerticalScroll(parent, renderInfo);
     updateTodayLine(renderInfo);

@@ -18,9 +18,12 @@ export type GanttData = {
     width: number,
     heigth: number,
     color: string,
+    plannedColor: string,
     showTooltip: () => void,
     hideTooltip: () => void,
     mark: (ctrlKey: boolean) => void,
+    plannedStart: Date,
+    plannedEnd: Date,
 }
 export type HeaderOptions = {
     headerContainer: D3_SELECTION_SVGG,

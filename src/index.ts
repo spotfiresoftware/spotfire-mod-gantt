@@ -3,10 +3,11 @@ import { createScalePopout } from "./Components/popout";
 import { messages } from "./custom-messages";
 import { GanttData, ViewMode } from "./custom-types";
 import { config } from "./global-settings";
-import { RenderState } from "./interfaces";
+import { RenderState, RenderInfo } from "./interfaces";
 import { render } from "./render";
 import { addDays, getMaxDate, getMinDate, increaseBrightness, _MS_PER_DAY } from "./utils";
 var events = require("events");
+import * as d3 from "d3";
 
 const Spotfire = window.Spotfire;
 const DEBUG = true;
@@ -22,7 +23,9 @@ Spotfire.initialize(async (mod) => {
         mod.visualization.axis("Color"),
         mod.windowSize(),
         mod.property<boolean>("overdue"),
-        mod.property<boolean>("weekend")
+        mod.property<boolean>("weekend"),
+        mod.property<string>("plannedBarColor"),
+        mod.property<string>("MobideoGanttDateFormat")
     );
 
     /**
@@ -46,7 +49,7 @@ Spotfire.initialize(async (mod) => {
      * It checks for valid data and will print errors in case of bad data or bad renders.
      * It calls the listener (reader) created earlier and adds itself as a callback to complete the loop.
      */
-    reader.subscribe(generalErrorHandler(mod, 200)(onChange));
+    reader.subscribe(generalErrorHandler(mod, 20000)(onChange));
 
     /**
      * The function that is part of the main read-render loop.
@@ -56,13 +59,17 @@ Spotfire.initialize(async (mod) => {
      * @param {Spotfire.Size} windowSize
      * @param {ModProperty<boolean>} overdue
      * @param {ModProperty<boolean>} weekend
+     * @param {ModProperty<string>} plannedBarColor
+     * @param {ModProperty<string>} dateFormat
      */
     async function onChange(
         dataView: DataView,
         colorAxis: Axis,
         windowsSize: Spotfire.Size,
         overdue: ModProperty<boolean>,
-        weekend: ModProperty<boolean>
+        weekend: ModProperty<boolean>,
+        plannedBarColor: ModProperty<string>,
+        dateFormat: ModProperty<string>
     ) {
         let root = await (await dataView.hierarchy("Task")).root();
         const tooltip: Tooltip = mod.controls.tooltip;
@@ -74,11 +81,11 @@ Spotfire.initialize(async (mod) => {
 
         mod.controls.errorOverlay.hide("DataView");
 
-        let tasks = buildTasks(root);
+        let tasks = buildTasks(root, dateFormat, tooltip, colorAxis, plannedBarColor);
 
         let minDate: Date;
         let maxDate: Date;
-        tasks.forEach((v) => {
+        tasks.forEach((v: GanttData) => {
             minDate = getMinDate(minDate, v.start);
             maxDate = getMaxDate(maxDate, v.end);
         });
@@ -115,102 +122,33 @@ Spotfire.initialize(async (mod) => {
         config.showOverdue = overdue.value();
         config.showWeekend = weekend.value();
 
-        await render(tasks, dataView, state, minDate, maxDate, tooltip, styling, windowsSize, context.interactive);
+        const renderInfo: RenderInfo = {
+            data: tasks,
+            state,
+            styling: context.styling,
+            mod: mod,
+            tooltip: mod.controls.tooltip,
+            interactive: !context.isEditing
+        };
+
+        await render(
+            tasks,
+            dataView,
+            state,
+            state.dataStartDate,
+            state.dataEndDate,
+            mod.controls.tooltip,
+            context.styling,
+            windowsSize,
+            !context.isEditing,
+            mod
+        );
         context.signalRenderComplete();
 
         mod.controls.errorOverlay.hide("General");
-
-        /**
-         * Create Gantt task objects from each node in the Task hierarchy.
-         * @param tasksRootNode The root node of the Task column hierarchy
-         */
-        function buildTasks(tasksRootNode: DataViewHierarchyNode): GanttData[] {
-            let flattenedTasks: GanttData[] = [];
-
-            tasksRootNode.children.forEach(addTasksFromHierarchyNode);
-
-            return flattenedTasks;
-
-            function addTasksFromHierarchyNode(node: DataViewHierarchyNode) {
-                flattenedTasks.push(addTask(node));
-
-                if (node.children) {
-                    node.children.slice().sort(sortNodes).forEach(addTasksFromHierarchyNode);
-                }
-            }
-
-            function addTask(node: DataViewHierarchyNode): GanttData {
-                const rows = node.rows();
-
-                let percent: number;
-                let showProgress = true;
-
-                try {
-                    percent =
-                        rows.reduce(
-                            (tot, curr) =>
-                                tot +
-                                (curr.continuous("Progress").value() as number) *
-                                ((curr.continuous("End").value() as Date).getTime() -
-                                    (curr.continuous("Start").value() as Date).getTime() || 1),
-                            0
-                        ) /
-                        rows.reduce(
-                            (tot, curr) =>
-                                tot +
-                                ((curr.continuous("End").value() as Date).getTime() -
-                                    (curr.continuous("Start").value() as Date).getTime() || 1),
-                            0
-                        );
-                    percent = Math.round(percent * 100) / 100;
-                } catch (e) {
-                    percent = 1;
-                    showProgress = false;
-                }
-
-                let startDates = node.rows().map((r) => r.continuous("Start").value() as Date);
-                let endDates = node.rows().map((r) => r.continuous("End").value() as Date);
-                startDates.sort((a, b) => a.getTime() - b.getTime());
-                endDates.sort((a, b) => b.getTime() - a.getTime());
-
-                const options = { day: "numeric", month: "numeric" } as const;
-
-                return {
-                    id: `${node.level}-${node.key}`,
-                    x: 0,
-                    y: 0,
-                    heigth: 0,
-                    width: 0,
-                    showTooltip: () => {
-                        tooltip.show(
-                            [
-                                node.formattedValue(),
-                                "",
-                                "Start date: " + startDates[0].toLocaleDateString(undefined, options),
-                                "End date: " + endDates[0].toLocaleDateString(undefined, options),
-                                showProgress ? "Progress: " + Math.round(percent * 100 * 100) / 100 + "%" : ""
-                            ].join("\n")
-                        );
-                    },
-                    hideTooltip: () => {
-                        tooltip.hide();
-                    },
-                    mark: (ctrlKey) => {
-                        ctrlKey ? node.mark("ToggleOrAdd") : node.mark();
-                    },
-                    text: "".repeat(node.level) + node.formattedValue(),
-                    level: node.level,
-                    percent: percent,
-                    start: startDates[0],
-                    end: endDates[0],
-                    isMarked: node.rows().every((r) => r.isMarked()),
-                    color: getColor(node, tasksRootNode, !!colorAxis.parts.length, colorAxis.isCategorical)
-                };
-            }
-        }
     }
 
-    function getColor(node: DataViewHierarchyNode, root: DataViewHierarchyNode, hasColorExpression: boolean, isCategorical: boolean) {
+    function getColor(node: DataViewHierarchyNode, root: DataViewHierarchyNode, hasColorExpression: boolean, isCategorical: boolean, isPlanned: boolean = false) {
         let color = config.defaultBarColor;
 
         const unmarkedRows = node.rows().filter((r) => !r.isMarked());
@@ -224,17 +162,17 @@ Spotfire.initialize(async (mod) => {
 
             if (hasColorExpression) {
                 if (isCategorical) {
-                    const colorValue = node.rows()[0].categorical("Color").value()[0].key;
+                    const colorValue = node.rows()[0].categorical(isPlanned ? "PlannedBarColor" : "Color").value()[0].key;
                     const differentElements = node.rows().filter((r) => {
-                        return r.categorical("Color").value()[0].key !== colorValue;
+                        return r.categorical(isPlanned ? "PlannedBarColor" : "Color").value()[0].key !== colorValue;
                     }).length;
                     if (differentElements > 0) {
                         color = config.defaultBarColor;
                     }
                 } else {
-                    const colorValue = node.rows()[0].continuous("Color").value();
+                    const colorValue = node.rows()[0].continuous(isPlanned ? "PlannedBarColor" : "Color").value();
                     const differentElements = node.rows().filter((r) => {
-                        return r.continuous("Color").value() !== colorValue;
+                        return r.continuous(isPlanned ? "PlannedBarColor" : "Color").value() !== colorValue;
                     }).length;
                     if (differentElements > 0) {
                         color = config.defaultBarColor;
@@ -255,6 +193,132 @@ Spotfire.initialize(async (mod) => {
         }
 
         return color;
+    }
+
+    /**
+     * Create Gantt task objects from each node in the Task hierarchy.
+     * @param tasksRootNode The root node of the Task column hierarchy
+     * @param dateFormat The date format property
+     * @param tooltip The tooltip instance
+     * @param colorAxis The color axis
+     * @param plannedBarColor The planned bar color property
+     */
+    function buildTasks(
+        tasksRootNode: DataViewHierarchyNode, 
+        dateFormat: ModProperty<string>,
+        tooltip: Tooltip,
+        colorAxis: Axis,
+        plannedBarColor: ModProperty<string>
+    ): GanttData[] {
+        let flattenedTasks: GanttData[] = [];
+
+        tasksRootNode.children.forEach(addTasksFromHierarchyNode);
+
+        return flattenedTasks;
+
+        function addTasksFromHierarchyNode(node: DataViewHierarchyNode) {
+            flattenedTasks.push(addTask(node, dateFormat));
+
+            if (node.children) {
+                node.children.slice().sort(sortNodes).forEach(addTasksFromHierarchyNode);
+            }
+        }
+
+        function addTask(node: DataViewHierarchyNode, dateFormat: ModProperty<string>): GanttData {
+            const rows = node.rows();
+
+            let percent: number;
+            let showProgress = true;
+            let plannedStart: Date = null;
+            let plannedEnd: Date = null;
+
+            try {
+                percent =
+                    rows.reduce(
+                        (tot, curr) =>
+                            tot +
+                            (curr.continuous("Progress").value() as number) *
+                            ((curr.continuous("End").value() as Date).getTime() -
+                                (curr.continuous("Start").value() as Date).getTime() || 1),
+                        0
+                    ) /
+                    rows.reduce(
+                        (tot, curr) =>
+                            tot +
+                            ((curr.continuous("End").value() as Date).getTime() -
+                                (curr.continuous("Start").value() as Date).getTime() || 1),
+                        0
+                    );
+                percent = Math.round(percent * 100) / 100;
+            } catch (e) {
+                percent = 1;
+                showProgress = false;
+            }
+
+            try {
+                plannedStart = rows[0].continuous("PlannedStart").value() as Date;
+                plannedEnd = rows[0].continuous("PlannedEnd").value() as Date;
+                
+                if (!plannedStart || !plannedEnd) {
+                    plannedStart = null;
+                    plannedEnd = null;
+                }
+            } catch (e) {
+                plannedStart = null;
+                plannedEnd = null;
+            }
+
+            let startDates = node.rows()
+                .map((r) => r.continuous("Start").value() as Date)
+                .filter(date => date !== null && date instanceof Date);
+            let endDates = node.rows()
+                .map((r) => r.continuous("End").value() as Date)
+                .filter(date => date !== null && date instanceof Date);
+
+            startDates.sort((a, b) => a.getTime() - b.getTime());
+            endDates.sort((a, b) => b.getTime() - a.getTime());
+
+            return {
+                id: `${node.level}-${node.key}`,
+                x: 0,
+                y: 0,
+                heigth: 0,
+                width: 0,
+                showTooltip: () => {
+                    tooltip.show(
+                        [
+                            node.formattedValue(),
+                            "",
+                            "Start date: " + startDates[0].toLocaleDateString(undefined, { 
+                                month: "2-digit", 
+                                day: "2-digit" 
+                            }),
+                            "End date: " + endDates[0].toLocaleDateString(undefined, { 
+                                month: "2-digit", 
+                                day: "2-digit" 
+                            }),
+                            showProgress ? "Progress: " + Math.round(percent * 100 * 100) / 100 + "%" : ""
+                        ].join("\n")
+                    );
+                },
+                hideTooltip: () => {
+                    tooltip.hide();
+                },
+                mark: (ctrlKey) => {
+                    ctrlKey ? node.mark("ToggleOrAdd") : node.mark();
+                },
+                text: "".repeat(node.level) + node.formattedValue(),
+                level: node.level,
+                percent: percent,
+                start: startDates[0],
+                end: endDates[0],
+                isMarked: node.rows().every((r) => r.isMarked()),
+                color: getColor(node, tasksRootNode, !!colorAxis.parts.length, colorAxis.isCategorical),
+                plannedColor: plannedBarColor.value(),
+                plannedStart: plannedStart,
+                plannedEnd: plannedEnd
+            };
+        }
     }
 });
 
@@ -298,6 +362,9 @@ export function generalErrorHandler<T extends (dataView: Spotfire.DataView, ...a
                  * Hard abort if row count exceeds an arbitrary selected limit
                  */
                 const rowCount = await dataView.rowCount();
+                console.log("rowCount", rowCount);
+                console.log("rowLimit", rowLimit);
+
                 if (rowCount && rowCount > rowLimit) {
                     mod.controls.errorOverlay.show(
                         `☹️ Cannot render - too many rows (rowCount: ${rowCount}, limit: ${rowLimit}) `,

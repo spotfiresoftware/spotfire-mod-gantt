@@ -10,7 +10,7 @@ import { RenderInfo } from "../interfaces";
 import invert from "invert-color/lib/invert";
 import { Tooltip } from "spotfire/spotfire-api-1-2";
 
-export function renderBars(parent: D3_SELECTION, renderInfo: RenderInfo) {
+export async function renderBars(parent: D3_SELECTION, renderInfo: RenderInfo) {
     const y: number = config.viewModeSliderHeight + config.zoomSliderHeight + config.headerHeight;
     const barsContainer = parent.append("g").attr("id", "BarsContainer").attr("clip-path", "url(#ChartClip)");
     const grid = barsContainer.append("g").attr("id", "Grid");
@@ -23,10 +23,10 @@ export function renderBars(parent: D3_SELECTION, renderInfo: RenderInfo) {
         .attr("height", renderInfo.data.length * config.rowHeight);
 
     buildGrid(grid, renderInfo);
-    buildBars(bars, renderInfo);
+    await buildBars(bars, renderInfo);
 }
 
-export function updateBars(renderInfo: RenderInfo) {
+export async function updateBars(renderInfo: RenderInfo) {
     const barsContainer = d3.select("#BarsContainer");
     barsContainer.selectAll("*").remove();
 
@@ -34,7 +34,7 @@ export function updateBars(renderInfo: RenderInfo) {
     buildGrid(grid, renderInfo);
 
     const bars = barsContainer.append("g").attr("id", "Bars");
-    buildBars(bars, renderInfo);
+    await buildBars(bars, renderInfo);
 }
 
 function updateGrid(renderInfo: RenderInfo) {
@@ -105,7 +105,7 @@ function buildGrid(grid: D3_SELECTION_BASE, renderInfo: RenderInfo) {
         .style("stroke", renderInfo.styling.scales.line.stroke);
 }
 
-function buildBars(bars: D3_SELECTION_BASE, renderInfo: RenderInfo) {
+async function buildBars(bars: D3_SELECTION_BASE, renderInfo: RenderInfo) {
     const unitWidth = config.chartWidth / dateDiffInDays(renderInfo.state.startDate, renderInfo.state.endDate, true);
     const y: number = config.viewModeSliderHeight + config.zoomSliderHeight + config.headerHeight;
     let x = config.labelsWidth;
@@ -114,11 +114,13 @@ function buildBars(bars: D3_SELECTION_BASE, renderInfo: RenderInfo) {
     const lang = navigator.language;
     moment.locale(lang);
 
-    const getFormattedDateTime = (dateTime: Date) =>
-        dateTime.toLocaleDateString(lang, {
-            month: "numeric",
-            day: "numeric"
-        });
+    // Get date format once at the start
+    const dateFormat = await renderInfo.mod.property<string>("MobideoGanttDateFormat");
+    const format = dateFormat.value() || "MM/DD";
+
+    const getFormattedDateTime = (dateTime: Date) => {
+        return moment(dateTime).format(format);
+    };
 
     let barY = y + (config.rowHeight - config.barHeight) / 2;
     renderInfo.data.map((v, i) => {
@@ -219,6 +221,110 @@ function buildBars(bars: D3_SELECTION_BASE, renderInfo: RenderInfo) {
                 v.mark(e.ctrlKey);
             });
 
+        // Add planned timeline box if planned dates exist
+        if (v.plannedStart && v.plannedEnd) {
+            try {
+                const plannedDaysFromMin = dateDiffInDays(renderInfo.state.startDate, v.plannedStart);
+                let plannedBarDays = dateDiffInDays(v.plannedStart, v.plannedEnd);
+                const plannedBarX = x + plannedDaysFromMin * unitWidth;
+                
+                if (plannedBarDays === 0) {
+                    plannedBarDays = 0.5;
+                }
+                const plannedBarWidth = plannedBarDays * unitWidth;
+
+                // Calculate actual bar positions
+                const actualDaysFromMin = dateDiffInDays(renderInfo.state.startDate, v.start);
+                const actualBarDays = dateDiffInDays(v.start, v.end);
+                const actualBarX = x + actualDaysFromMin * unitWidth;
+                const actualBarWidth = actualBarDays * unitWidth;
+
+                // Determine if there is a delay or early start
+                const startDiff = actualBarX - plannedBarX;
+                const endDelay = v.end > v.plannedEnd ? (actualBarX + actualBarWidth) - (plannedBarX + plannedBarWidth) : 0;
+
+                // Add planned timeline box
+                const plannedBar = bar.append("rect")
+                    .attr("x", plannedBarX)
+                    .attr("y", barY + 10)
+                    .attr("width", plannedBarWidth)
+                    .attr("height", config.barHeight)
+                    .style("fill", v.plannedColor || v.color)
+                    .style("stroke", v.plannedColor || v.color)
+                    .style("stroke-width", "1px")
+                    .style("cursor", "pointer")
+                    .on("click", (e) => {
+                        e.stopPropagation();
+                        showPlannedBarColorPopout(e, renderInfo).catch(console.error);
+                    });
+
+                // Add planned start date label
+                renderText(
+                    bar,
+                    plannedBarX,
+                    barY + config.barHeight + 20,
+                    getFormattedDateTime(v.plannedStart),
+                    renderInfo.styling,
+                    "start",
+                    true
+                ).style("font-size", `${parseInt(renderInfo.styling.scales.font.fontSize.toString()) - 2}px`);
+
+                // Add planned end date label
+                renderText(
+                    bar,
+                    plannedBarX + plannedBarWidth,
+                    barY + config.barHeight + 20,
+                    getFormattedDateTime(v.plannedEnd),
+                    renderInfo.styling,
+                    "end",
+                    true
+                ).style("font-size", `${parseInt(renderInfo.styling.scales.font.fontSize.toString()) - 2}px`);
+
+                // Add actual timeline box
+                bar.append("rect")
+                    .attr("x", actualBarX)
+                    .attr("y", barY)
+                    .attr("width", actualBarWidth)
+                    .attr("height", config.barHeight)
+                    .style("fill", color)
+                    .style("stroke", "none");
+
+                // Only show red borders if there is actual overlap
+                const hasOverlap = !(actualBarX + actualBarWidth < plannedBarX || plannedBarX + plannedBarWidth < actualBarX);
+
+                if (hasOverlap) {
+                    // Add red border for start exceptions (both early start and delay)
+                    if (startDiff !== 0) {  // If there's any difference in start times
+                        const exceptionX = startDiff > 0 ? plannedBarX : actualBarX;  // Start from earlier X
+                        const exceptionWidth = Math.abs(startDiff);  // Width is absolute difference
+                        bar.append("rect")
+                            .attr("x", exceptionX)
+                            .attr("y", barY)
+                            .attr("width", exceptionWidth)
+                            .attr("height", config.barHeight)
+                            .style("fill", "none")
+                            .style("stroke", "#ff0000")
+                            .style("stroke-width", "2px");
+                    }
+
+                    // Add red border for end delay
+                    if (endDelay > 0) {
+                        bar.append("rect")
+                            .attr("x", plannedBarX + plannedBarWidth)
+                            .attr("y", barY)
+                            .attr("width", endDelay)
+                            .attr("height", config.barHeight)
+                            .style("fill", "none")
+                            .style("stroke", "#ff0000")
+                            .style("stroke-width", "2px");
+                    }
+                }
+
+            } catch (e) {
+                console.log("Error rendering planned timeline:", e);
+            }
+        }
+
         barY += rowHeight;
     });
 
@@ -267,4 +373,57 @@ function renderWarningIcon(parent: D3_SELECTION_BASE, x: number, y: number, tool
         .attr("fill", "#fab632");
     iconG.append("path").attr("d", "M-65,318h2v2h-2Z").attr("fill", "#fff");
     iconG.append("path").attr("d", "M-65,314h2v3h-2Z").attr("fill", "#fff");
+}
+
+async function showPlannedBarColorPopout(event: MouseEvent, renderInfo: RenderInfo) {
+    const { popout } = renderInfo.mod.controls;
+    const plannedBarColorProp = await renderInfo.mod.property<string>("plannedBarColor");
+    const is = (value: string) => plannedBarColorProp.value() === value;
+
+    popout.show(
+        {
+            x: event.clientX,
+            y: event.clientY,
+            autoClose: true,
+            alignment: "Bottom",
+            onChange: (e) => {
+                if (e.name === "plannedBarColor") {
+                    plannedBarColorProp.set(e.value);
+                    // Force a re-render to update the colors
+                    updateBars(renderInfo);
+                }
+            }
+        },
+        () => [
+            popout.section({
+                heading: "Planned Bar Color",
+                children: [
+                    popout.components.radioButton({
+                        name: "plannedBarColor",
+                        text: "Orange",
+                        value: "orange",
+                        checked: is("orange")
+                    }),
+                    popout.components.radioButton({
+                        name: "plannedBarColor",
+                        text: "Red",
+                        value: "red",
+                        checked: is("red")
+                    }),
+                    popout.components.radioButton({
+                        name: "plannedBarColor",
+                        text: "Green",
+                        value: "green",
+                        checked: is("green")
+                    }),
+                    popout.components.radioButton({
+                        name: "plannedBarColor",
+                        text: "Yellow",
+                        value: "yellow",
+                        checked: is("yellow")
+                    })
+                ]
+            })
+        ]
+    );
 }

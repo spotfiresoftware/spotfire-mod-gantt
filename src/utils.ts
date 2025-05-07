@@ -18,17 +18,25 @@ export function getMaxDate(a: Date, b: Date) {
 }
 
 export function dateDiffInDays(a: Date, b: Date, includeLastDay = false) {
-    const utc1 = Date.UTC(a.getFullYear(), a.getMonth(), a.getDate());
-    const utc2 = Date.UTC(b.getFullYear(), b.getMonth(), b.getDate());
-
-    if (includeLastDay) {
-        return Math.floor((utc2 - utc1) / _MS_PER_DAY) + 1;
+    if (!a || !b) {
+        console.log("Warning: Null date in dateDiffInDays", { a, b });
+        return 0;
     }
-    return Math.floor((utc2 - utc1) / _MS_PER_DAY);
+
+    // Create new dates without timezone conversion
+    const d1 = new Date(a.getFullYear(), a.getMonth(), a.getDate());
+    const d2 = new Date(b.getFullYear(), b.getMonth(), b.getDate());
+
+    // Calculate difference in days
+    const diffTime = d2.getTime() - d1.getTime();
+    const diffDays = Math.floor(diffTime / _MS_PER_DAY);
+
+    return includeLastDay ? diffDays + 1 : diffDays;
 }
 
 export function addDays(date: Date, days: number) {
-    const d = new Date(date.valueOf());
+    // Create new date without timezone conversion
+    const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     d.setDate(d.getDate() + days);
     return d;
 }
@@ -42,10 +50,9 @@ export function getTranslation(transform: string) {
 
 export function getDates(begin: Date, end: Date) {
     const dates = [];
-    let s = new Date(begin);
-    s.setHours(0, 0, 0, 0);
-    const e = new Date(end);
-    e.setHours(0, 0, 0, 0);
+    // Create new dates without timezone conversion
+    let s = new Date(begin.getFullYear(), begin.getMonth(), begin.getDate());
+    const e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
 
     while (s.getTime() <= e.getTime()) {
         dates.push(s.getTime());

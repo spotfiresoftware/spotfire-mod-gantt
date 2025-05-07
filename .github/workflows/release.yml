@@ -1,0 +1,118 @@
+name: Create Release
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  push:
+    branches:
+      - main
+
+jobs:
+  qa-release:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Bump version for PR
+        id: bump_version
+        run: |
+          VERSION=$(cat version.txt)
+          NEW_VERSION=$(echo $VERSION | awk -F. -v OFS=. '{$NF++;print}')
+          echo "New version: $NEW_VERSION"
+          echo $NEW_VERSION > version.txt
+          echo "VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+      - name: Update mod-manifest.json with version
+        run: |
+          jq --arg version "${{ env.VERSION }}" '.version = $version' dist/mod-manifest.json > dist/mod-manifest.tmp && mv dist/mod-manifest.tmp dist/mod-manifest.json
+
+      - name: Create QA release zip
+        run: |
+          cd dist
+          zip -r ../mobideo-spotfire-gantt-${{ github.head_ref }}-${{ env.VERSION }}.zip ./*
+          cd ..
+          echo "QA release created: mobideo-spotfire-gantt-${{ github.head_ref }}-${{ env.VERSION }}.zip"
+
+      - name: Upload QA release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-release
+          path: mobideo-spotfire-gantt-${{ github.head_ref }}-${{ env.VERSION }}.zip
+
+      - name: Commit version bump
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git fetch origin ${{ github.head_ref }}
+          git checkout ${{ github.head_ref }}
+          git add version.txt
+          git commit -m "Bump version to ${{ env.VERSION }}"
+          git push --force origin ${{ github.head_ref }}
+
+  production-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Read version from file
+        id: read_version
+        run: echo "VERSION=$(cat version.txt)" >> $GITHUB_ENV
+
+      - name: Update mod-manifest.json with version
+        run: |
+          jq --arg version "${{ env.VERSION }}" '.version = $version' dist/mod-manifest.json > dist/mod-manifest.tmp && mv dist/mod-manifest.tmp dist/mod-manifest.json
+
+      - name: Create production release zip
+        run: |
+          cd dist
+          zip -r ../mobideo-spotfire-gantt-main-${{ env.VERSION }}.zip ./*
+          cd ..
+          echo "Production release created: mobideo-spotfire-gantt-main-${{ env.VERSION }}.zip"
+
+      - name: Create GitHub Release and Tag
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ env.VERSION }}
+          release_name: Release ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: mobideo-spotfire-gantt-main-${{ env.VERSION }}.zip
+          asset_name: mobideo-spotfire-gantt-main-${{ env.VERSION }}.zip
+          asset_content_type: application/zip
+          

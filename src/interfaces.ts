@@ -1,4 +1,4 @@
-import { StylingInfo, Tooltip } from "spotfire/spotfire-api-1-2";
+import { StylingInfo, Tooltip, Mod } from "spotfire/spotfire-api-1-2";
 import { GanttData, ViewMode } from "./custom-types";
 
 export interface RenderState {
@@ -19,5 +19,6 @@ export interface RenderInfo {
     data: GanttData[],
     styling: StylingInfo,
     tooltip: Tooltip,
-    interactive: boolean
+    interactive: boolean,
+    mod: Mod
 }

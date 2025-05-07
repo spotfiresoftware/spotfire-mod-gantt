@@ -1,5 +1,5 @@
 import * as d3 from "d3";
-import { Tooltip, DataView, StylingInfo } from "spotfire/spotfire-api-1-2";
+import { Tooltip, DataView, StylingInfo, Mod } from "spotfire/spotfire-api-1-2";
 import { config } from "./global-settings";
 import { renderGantt } from "./Components/gantt";
 import { GanttData } from "./custom-types";
@@ -21,7 +21,8 @@ export async function render(
     tooltip: Tooltip,
     styling: StylingInfo,
     windowSize: Spotfire.Size,
-    interactive: boolean
+    interactive: boolean,
+    mod: Mod
 ) {
     if (state.preventRender) {
         // Early return if the state currently disallows rendering.
@@ -79,7 +80,7 @@ export async function render(
 
     await (document as any).fonts.ready;
 
-    renderGantt(svg, data, state, tooltip, styling, interactive);
+    renderGantt(svg, data, state, tooltip, styling, interactive, mod);
 
     svg.on("click", (e) => {
         const header = e.target.closest("#Header");

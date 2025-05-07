@@ -1,19 +1,30 @@
 {
     "apiVersion": "1.2",
-    "version": "1.1.0",
-    "name": "Gantt chart",
-    "id": "ts-gantt-chart",
+    "version": "1.1.1",
+    "name": "Mobideo Gantt chart",
+    "id": "mobideo-gantt-chart",
     "icon": "icon.svg",
+
     "properties": [
+        {
+            "name": "plannedBarColor",
+            "type": "string",
+            "defaultValue": "orange"
+        },
         {
             "name": "overdue",
             "type": "boolean",
-            "defaultValue": "false"
+            "defaultValue": false
         },
         {
             "name": "weekend",
             "type": "boolean",
-            "defaultValue": "true"
+            "defaultValue": false
+        },
+        {
+            "name": "MobideoGanttDateFormat",
+            "type": "string",
+            "defaultValue": "MM/DD"
         }
     ],
     "dataViewDefinition": {
@@ -41,6 +52,24 @@
             },
             {
                 "name": "End",
+                "mode": "continuous",
+                "placement": "none",
+                "automaticConfiguration": {
+                    "expressionHeuristics": "none"
+                },
+                "dataTypes": {"allowNumeric": false, "allowDateTime": true, "allowString": false}
+            },
+            {
+                "name": "PlannedStart",
+                "mode": "continuous",
+                "placement": "none",
+                "automaticConfiguration": {
+                    "expressionHeuristics": "none"
+                },
+                "dataTypes": {"allowNumeric": false, "allowDateTime": true, "allowString": false}
+            },
+            {
+                "name": "PlannedEnd",
                 "mode": "continuous",
                 "placement": "none",
                 "automaticConfiguration": {
