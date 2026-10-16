@@ -5,7 +5,7 @@ import { GanttData, ViewMode } from "./custom-types";
 import { config } from "./global-settings";
 import { RenderState } from "./interfaces";
 import { render } from "./render";
-import { addDays, getMaxDate, getMinDate, increaseBrightness, _MS_PER_DAY } from "./utils";
+import { addDays, dateDiffInDays, getMaxDate, getMinDate, increaseBrightness, MAX_DATE_RANGE_DAYS, _MS_PER_DAY } from "./utils";
 var events = require("events");
 
 const Spotfire = window.Spotfire;
@@ -82,6 +82,15 @@ Spotfire.initialize(async (mod) => {
             minDate = getMinDate(minDate, v.start);
             maxDate = getMaxDate(maxDate, v.end);
         });
+
+        if (dateDiffInDays(minDate, maxDate) > MAX_DATE_RANGE_DAYS) {
+            mod.controls.errorOverlay.show(
+                `The Start/End date range is too large to render (max ${MAX_DATE_RANGE_DAYS} days). Please narrow the date range.`,
+                "DateRange"
+            );
+            return;
+        }
+        mod.controls.errorOverlay.hide("DateRange");
 
         minDate = addDays(minDate, -5);
         maxDate = addDays(maxDate, 5);
