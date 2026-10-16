@@ -160,8 +160,8 @@ Spotfire.initialize(async (mod) => {
                             (tot, curr) =>
                                 tot +
                                 (curr.continuous("Progress").value() as number) *
-                                ((curr.continuous("End").value() as Date).getTime() -
-                                    (curr.continuous("Start").value() as Date).getTime() || 1),
+                                    ((curr.continuous("End").value() as Date).getTime() -
+                                        (curr.continuous("Start").value() as Date).getTime() || 1),
                             0
                         ) /
                         rows.reduce(
@@ -329,8 +329,8 @@ export function generalErrorHandler<T extends (dataView: Spotfire.DataView, ...a
             } catch (e) {
                 mod.controls.errorOverlay.show(
                     [e.message].concat(messages.InitialConfigurationHelper) ||
-                    e ||
-                    "☹️ Something went wrong, check developer console",
+                        e ||
+                        "☹️ Something went wrong, check developer console",
                     "General"
                 );
                 if (DEBUG) {
